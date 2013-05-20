@@ -48,7 +48,9 @@ var configLoader = require('./engine/config.js'),
     EventEmitter = require('events').EventEmitter,
     util = require('util'),
     assert = require('assert'),
-    aop = require('./engine/aop.js');
+    sanitize = require('validator').sanitize,
+    aop = require('./engine/aop.js'),
+    url = require('url');
 
 exports.version = require('../package.json').version;
 
@@ -162,6 +164,154 @@ var Engine = module.exports = function(opts) {
 }
 
 util.inherits(Engine, LogEmitter);
+
+/*
+engine.executeRoute("post",               -> method
+                    "/a/b/c?z=u,y=v,z=w", -> uri
+                    {                     -> opts
+                        request: {headers: {..}, parts: {...} }
+                        body: {body As Jason} ,
+                        parentEvent: ...
+                    },
+                    function(emitter){...}
+                    );
+
+ */
+Engine.prototype.executeRoute = function (method, uri, opts, func) {
+    var pieces = url.parse(uri || "/", true);
+    var pathArray = (pieces.pathname.length > 1 &&
+        pieces.pathname.charAt(pieces.pathname.length - 1) == '/' ?
+        pieces.pathname.splice(0, pieces.pathname.length - 1) : pieces.pathname).split('/');
+
+    opts.request = opts.request || {};
+    opts.request.params = opts.request.params || {};
+
+    // fill params
+    collectQueryParams(pieces.query, opts.request || {});
+
+    //route params
+    var params = {};
+
+    var route;
+    var found = _.find(_.keys(this.routes.verbMap), function (routeStrings) {
+        if(!this.routes.verbMap[routeStrings][method]){
+            return false;
+        }
+        var routeParams = {};
+        var aMatchingRoute = _.find(this.routes.verbMap[routeStrings][method], function(verbRouteVariant){
+            var pathAsArray = verbRouteVariant.pathAsArray || [];
+            var ret = pathAsArray.length > 0 && pathAsArray.length == pathArray.length &&
+                _.every(pathAsArray, function (val, n) {
+                    if(val.charAt(0) == ":"){
+                        this[val.splice(1)] = pathArray[n];
+                        return true;
+                    }
+                    return val == pathArray[n];
+                }, routeParams);
+            if(ret) {
+                params = routeParams;
+            }
+            return ret;
+        });
+
+        if(!aMatchingRoute){
+            return false;
+        }
+
+        route = _(this.routes.verbMap[routeStrings][method]).chain()
+            .filter(function (verbRouteVariant) {
+                var defaultKeys = _.chain(verbRouteVariant.query)
+                    .keys()
+                    .filter(function (k) {
+                        var querykey = verbRouteVariant.query[k];
+                        if (querykey.indexOf('^') != -1) {
+                            querykey = querykey.substr(1);
+                        }
+                        return _.has(verbRouteVariant.routeInfo.defaults, querykey);
+                    })
+                    .value();
+                // missed query params that are neither defaults nor user provided
+                var missed = _.difference(_.keys(verbRouteVariant.query), _.union(defaultKeys, _.keys(opts.request.params)));
+                var misrequired = _.filter(missed, function (key) {
+                    if (verbRouteVariant.routeInfo.optparam) {
+                        // if with optional params, find if any required param is missed
+                        return verbRouteVariant.query[key] && verbRouteVariant.query[key].indexOf("^") == 0;
+                    }
+                    else {
+                        // everything is required
+                        return missed;
+                    }
+                });
+                return !misrequired.length;
+            })
+            .max(function (verbRouteVariant) {
+                if (!verbRouteVariant.routeInfo.optparam) {
+                    return 0;
+                }
+                // with optional param
+                var matchCount = _.intersection(_.keys(holder.params), _.keys(verbRouteVariant.query)).length;
+                var requiredCount = _.filter(_.keys(verbRouteVariant.query),function (key) {
+                    return verbRouteVariant[key] && verbRouteVariant[key].indexOf("^") == 0;
+                }).length;
+                return matchCount - requiredCount;
+
+            })
+            .value();
+    });
+
+    if (!found || !route) { // route not found or required keys were missing
+        return false;
+    }
+
+    // collect default query params if needed
+    _.each(route.routeInfo.defaults, function (defaultValue, queryParam) {
+        if (queryParam.indexOf('^') != -1) {
+            queryParam = queryParam.substr(1);
+        }
+        opts.request.routeParams[queryParam] = defaultValue;
+    });
+    var keys = _.keys(params);
+    _.each(keys, function (key) {
+        opts.request.routeParams[key] = params[key];
+    });
+
+    _.each(route.query, function (queryParam, paramName) {
+        if (opts.request.params[paramName]) {
+            if (queryParam.indexOf('^') != -1) {
+                queryParam = queryParam.substr(1);
+            }
+            opts.request.routeParams[queryParam] = opts.request.params[paramName];
+        }
+        else if (opts.request.params.routeParams[queryParam]) {
+            opts.request.params.routeParams[queryParam] = null;
+        }
+    });
+
+    this.execute(route.script,
+        {
+            request: opts.request,
+            route: uri,
+            context: opts.body || {},
+            parentEvent: opts.parentEvent
+        },
+        func // user provided
+    );
+}
+
+function collectQueryParams(query, request) {
+    // Collect req params (with sanitization)
+    _.each(query, function(v, k) {
+        if (_.isArray(v)) {
+            request.params[k] = [];
+            _.each(v, function(val) {
+                request.params[k].push(sanitize(val).str);
+            });
+        }
+        else {
+            request.params[k] = sanitize(v).str;
+        }
+    });
+}
 
 /**
  * Executes a script. In the generic form, this function takes the following args:
