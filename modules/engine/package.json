@@ -1,7 +1,7 @@
 {
     "author": "ql.io",
     "name": "ql.io-engine",
-    "version": "0.8.8",
+    "version": "0.8.8mobi0_0_1",
     "repository": {
         "type": "git",
         "url": "https://github.com/ql-io/ql.io"
@@ -30,6 +30,7 @@
         "csv": "0.0.18",
         "iconv": "1.2.3",
         "charlie": "0.0.5",
+        "validator": "0.4.10",
         "stream-buffers": "https://github.com/idralyuk/node-stream-buffer/tarball/master",
         "form-data": "0.0.2",
         "mongodb": "1.2.13"
