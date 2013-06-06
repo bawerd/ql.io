@@ -47,7 +47,7 @@ var Verb = module.exports = function(table, statement, type, bag, path, conn) {
             break;
         default:
             var myConnector = require(bag.connectors[conn]);
-            this.connector = new myConnector();
+            this.connector = new myConnector(table, statement, type, bag, path);
         }
 
 

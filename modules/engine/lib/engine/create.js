@@ -30,6 +30,7 @@ exports.exec = function(opts, statement, parentEvent, cb) {
         path: process.cwd() + '/',
         config: opts.config,
         settings: opts.settings,
+        connectors: opts.connectors,
         name: '',
         logEmitter: opts.logEmitter,
         statement: statement,
