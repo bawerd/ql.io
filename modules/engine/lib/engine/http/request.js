@@ -49,7 +49,8 @@ exports.send = function(args) {
     assert.ok(host, 'Host of URI [' + args.uri  + '] is invalid');
     port = authority.port() || (isTls ? 443 : 80);
     assert.ok(port, 'Port of URI [' + args.uri  + '] is invalid');
-    path = (heirpart.path().value || '') + (uri.querystring() || '');
+    // The path has to be relative to the authority (host:port)
+    path = (heirpart.path().value.substring(authority.value.length) || '') + (uri.querystring() || '');
 
     assert.ok(args.name, 'table name not specified');
 
