@@ -111,6 +111,16 @@ exports.DEBUG = 'ql.io-debug';
 
 exports.DEBUG_STEP = 'ql.io-debug-step';
 
+exports.DEBUG_BACK = 'ql.io-debug-back';
+
+exports.DEBUG_RESUME = 'ql.io-debug-resume';
+
+exports.DEBUG_SHOW = 'ql.io-debug-show';
+
+exports.DEBUG_CLEAR = 'ql.io-debug-clear';
+
+exports.DEBUG_FLOW = 'ql.io-debug-flow';
+
 exports.VISUALIZATION = 'ql.io-visualization'
 
 exports.KILL = 'ql.io-kill';

@@ -34,7 +34,8 @@ var winston = require('winston'),
     WebSocketServer = require('websocket').server,
     compress = require('./lib/compress.js').compress,
     formidable = require('formidable'),
-    cacheUtil = require('./lib/cache-util.js');
+    cacheUtil = require('./lib/cache-util.js'),
+    prompt = require('prompt');
 
 exports.version = require('./package.json').version;
 
@@ -46,8 +47,7 @@ var skipHeaders = ['connection', 'host', 'referer', 'content-length', 'accept', 
     'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers',
     'transfer-encoding', 'upgrade'];
 
-var Console = module.exports = function(opts, cb) {
-
+var Console = module.exports = function(opts, cb, breakpoints) {
     opts = opts || {};
 
     var cache = opts.cache = cacheUtil.startCache(opts.config);
@@ -305,6 +305,7 @@ var Console = module.exports = function(opts, cb) {
                 }
 
 
+
                 // collect default query params if needed
                 _.each(route.routeInfo.defaults, function(defaultValue, queryParam) {
                     if (queryParam.indexOf('^') != -1){
@@ -354,19 +355,70 @@ var Console = module.exports = function(opts, cb) {
                 });
 
                 var execState = [];
-                engine.execute(route.script,
-                    {
-                        request: holder,
-                        route: uri,
-                        context: req.body || {},
-                        parentEvent: urlEvent.event
-                    },
-                    function(emitter) {
-                        setupExecStateEmitter(emitter, execState, req.param('events'));
-                        setupCounters(emitter);
-                        emitter.on('end', urlEvent.cb);
-                    }
-                );
+                if (breakpoints){
+                    engine.execute(route.script,
+                        {
+                            request: holder,
+                            route: uri,
+                            context: req.body || {},
+                            parentEvent: urlEvent.event
+                        },
+                        function(emitter) {
+                            setupExecStateEmitter(emitter, execState, req.param('events'));
+                            setupCounters(emitter);
+
+                            emitter.on('ql.io-debug', function(packet){
+                                console.log(packet)
+                                prompt.start
+                                prompt.get(['resume'], function (err, result) {
+                                    //
+                                    // Log the results.
+                                    //
+                                    console.log('Command-line input received:');
+                                    console.log('  you said: ' + result.resume);
+                                    if(result.resume == 'resume'){
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-resume');
+                                    }
+                                    else if(result.resume == 'step'){
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-step');
+                                    }
+                                    else if(result.resume.indexOf('show ') == 0){
+                                        var varname = result.resume.split(' ')[1].split(',')
+                                        //var varname = 'profile'
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-show', varname);
+
+                                    }else if (result.resume == 'back'){
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-back');
+                                    }else if (result.resume.indexOf('clear ') == 0){
+                                        var bps = result.resume.split(' ')[1].split(',')
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-clear', bps);
+                                    }else if (result.resume == 'flow'){
+                                        engine.debugData[packet.emitterID].emit('ql.io-debug-flow');
+                                    }
+                                });
+
+                                //engine.debugData[packet.emitterID].emit('ql.io-debug-step');
+                            })
+                            emitter.on('end', urlEvent.cb);
+                        },
+                        breakpoints
+                    );
+                } else {
+                    engine.execute(route.script,
+                        {
+                            request: holder,
+                            route: uri,
+                            context: req.body || {},
+                            parentEvent: urlEvent.event
+                        },
+                        function(emitter) {
+                            setupExecStateEmitter(emitter, execState, req.param('events'));
+                            setupCounters(emitter);
+
+                            emitter.on('end', urlEvent.cb);
+                        }
+                    );
+                }
             });
         });
     });

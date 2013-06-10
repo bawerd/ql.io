@@ -365,7 +365,7 @@ Engine.prototype.doExecute = function() {
         request, start = Date.now(), tempResources = {}, packet, requestId = '', that = this;
 
     //for debug
-    var emitterID, unexecuted, step1, timeoutID;
+    var emitterID, unexecuted, step1, timeoutID, breakpoints, futureStack, pastStack;
     if(arguments.length === 2) {
         script = arguments[0];
         func = arguments[1];
@@ -381,6 +381,10 @@ Engine.prototype.doExecute = function() {
         script = arguments[0];
         func = arguments[2];
         opts = arguments[1];
+        breakpoints = arguments[3];
+        // these two stacks are used for debug mode rewind.
+        futureStack = [];
+        pastStack = [];
         // only assign emitterID in debug mode.
         emitterID = that.debugData.max++;
     }
@@ -454,8 +458,73 @@ Engine.prototype.doExecute = function() {
         }
     });
     if (emitterID) {
+        emitter.on(eventTypes.DEBUG_RESUME, function(){
+            while(!_.isEmpty(futureStack)){
+                var tomove = futureStack.pop();
+                pastStack.push(tomove)
+                context[tomove.k] = tomove.v;
+                if(_.contains(breakpoints, tomove.k) || _.contains(breakpoints, tomove.v)){
+                    //if(tomove.k in breakpoints){
+                    pause()
+                    return
+                }
+            }
+            if(_.isEmpty(futureStack)){
+                execOneStatement(unexecuted.shift());
+            }
+        })
         emitter.on(eventTypes.DEBUG_STEP, function (){
-            execOneStatement(unexecuted.shift());
+            if (!_.isEmpty(futureStack)){
+                var tomove = futureStack.pop();
+                pastStack.push(tomove)
+                context[tomove.k] = tomove.v;
+            }else{
+                execOneStatement(unexecuted.shift(), true);
+            }
+
+        });
+        emitter.on(eventTypes.DEBUG_BACK, function(){
+            var tomove =pastStack.pop()
+            if (tomove){
+                futureStack.push(tomove)
+                delete context[tomove.k]
+            }
+            pause()
+        });
+        emitter.on(eventTypes.DEBUG_SHOW, function(varnames){
+            var partContext = {}
+            _.each(varnames, function(varname){
+                partContext[varname] = context[varname]
+            })
+            emitter.emit(eventTypes.DEBUG, {
+                context: partContext,
+                emitterID : emitterID
+            });
+            //hongcheng
+            //console.log(aa)
+        })
+        emitter.on(eventTypes.DEBUG_CLEAR, function(bps){
+            if (bps == ['all']){
+                breakpoints = []
+            }else {
+                _.each(bps, function(bp){
+                    breakpoints = _.without(breakpoints, bp)
+                })
+            }
+            emitter.emit(eventTypes.DEBUG, {
+                breakpoints: breakpoints,
+                emitterID : emitterID
+            });
+            //hongcheng
+            //console.log(aa)
+        })
+        emitter.on(eventTypes.DEBUG_FLOW, function (){
+            emitter.emit(eventTypes.DEBUG, {
+                flow:_.map(pastStack, function(execNode){
+                    return execNode.k
+                }),
+                emitterID : emitterID
+            });
         });
         emitter.on(eventTypes.KILL, function (){
             delete that.debugData[emitterID];
@@ -684,7 +753,13 @@ Engine.prototype.doExecute = function() {
         }
     }
 
-    var execOneStatement = function(statement) {
+    var pause = function(){
+        emitter.emit(eventTypes.DEBUG, {
+            context : context,
+            emitterID : emitterID
+        });
+    }
+    var execOneStatement = function(statement, step) {
         if (!statement) {
             return;
         }
@@ -703,6 +778,11 @@ Engine.prototype.doExecute = function() {
                 cache: that.cache
             },
             todo, function(err, results) {
+                pastStack.push({
+                    k: statement.assign,
+                    l: statement.line,
+                    v: results.body
+                })
                 if(err) {
                     if(todo.fallback) {
                         todo.fallback.fbhold = false;
@@ -740,15 +820,22 @@ Engine.prototype.doExecute = function() {
                         sweep(listener);
                     }
                 });
-                if (emitterID && unexecuted.length) {
-                    emitter.emit(eventTypes.DEBUG, {
-                        context : context,
-                        emitterID : emitterID
-                    });
-                }
-                else if(execState[todo.id].done) {
+                if(execState[todo.id].done) {
                     execState[todo.id].done.call(null, err, results);
                 }
+                if (emitterID){
+                    if (unexecuted.length && (_.contains(breakpoints, todo.assign) || _.contains(breakpoints, todo.line))){
+                        pause()
+                    }
+                    else if (step){
+                        pause()
+                    }
+                    else {
+                        emitter.emit(eventTypes.DEBUG_RESUME)
+                    }
+                }
+
+
             }, engineEvent.event);
     }
     // done with all sweep, this is the final wrap up.
@@ -943,7 +1030,6 @@ function _execOne(opts, statement, parentEvent, cb) {
                     });
                 }
             }
-
             opts.context[statement.assign] = obj;
             opts.emitter.emit(statement.assign, obj)
             var ret = {
