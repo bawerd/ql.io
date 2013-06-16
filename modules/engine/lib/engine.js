@@ -466,7 +466,6 @@ Engine.prototype.doExecute = function() {
                 if(_.contains(breakpoints, tomove.k) || _.contains(breakpoints, tomove.v)){
                     //if(tomove.k in breakpoints){
                     pause()
-                    return
                 }
             }
             if(_.isEmpty(futureStack)){
@@ -478,6 +477,7 @@ Engine.prototype.doExecute = function() {
                 var tomove = futureStack.pop();
                 pastStack.push(tomove)
                 context[tomove.k] = tomove.v;
+                pause()
             }else{
                 execOneStatement(unexecuted.shift(), true);
             }
@@ -494,7 +494,9 @@ Engine.prototype.doExecute = function() {
         emitter.on(eventTypes.DEBUG_SHOW, function(varnames){
             var partContext = {}
             _.each(varnames, function(varname){
-                partContext[varname] = context[varname]
+                if (_.has(context, varname)){
+                    partContext[varname] = context[varname]
+                }
             })
             emitter.emit(eventTypes.DEBUG, {
                 context: partContext,
@@ -520,7 +522,7 @@ Engine.prototype.doExecute = function() {
         })
         emitter.on(eventTypes.DEBUG_FLOW, function (){
             emitter.emit(eventTypes.DEBUG, {
-                flow:_.map(pastStack, function(execNode){
+                context:_.map(pastStack, function(execNode){
                     return execNode.k
                 }),
                 emitterID : emitterID

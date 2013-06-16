@@ -366,14 +366,13 @@ var Console = module.exports = function(opts, cb, breakpoints) {
                         function(emitter) {
                             setupExecStateEmitter(emitter, execState, req.param('events'));
                             setupCounters(emitter);
+                            function debugText(packet){
+                                if (packet && packet.context){
 
-                            emitter.on('ql.io-debug', function(packet){
-                                console.log(packet)
+                                    console.log(packet.context)
+                                }
                                 prompt.start
-                                prompt.get(['resume'], function (err, result) {
-                                    //
-                                    // Log the results.
-                                    //
+                                prompt.get(['resume'], function(err, result){
                                     console.log('Command-line input received:');
                                     console.log('  you said: ' + result.resume);
                                     if(result.resume == 'resume'){
@@ -394,11 +393,15 @@ var Console = module.exports = function(opts, cb, breakpoints) {
                                         engine.debugData[packet.emitterID].emit('ql.io-debug-clear', bps);
                                     }else if (result.resume == 'flow'){
                                         engine.debugData[packet.emitterID].emit('ql.io-debug-flow');
+                                    }else {
+                                        console.log('valid commands: resume, step, show VARNAME, back, clear VARNAME, flow')
+                                        debugText(null)
                                     }
                                 });
 
-                                //engine.debugData[packet.emitterID].emit('ql.io-debug-step');
-                            })
+                            }
+
+                            emitter.on('ql.io-debug', debugText)
                             emitter.on('end', urlEvent.cb);
                         },
                         breakpoints
