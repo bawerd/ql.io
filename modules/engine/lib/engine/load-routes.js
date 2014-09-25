@@ -121,11 +121,14 @@ function loadInternal(path, prefix, logEmitter, routes, tablesInfo) {
                     return _.isEqual(record.query, pieces.query);
                 })) {
                     var routeRecord = {
-                            script: cooked,
-                            query: pieces.query,
-                            routeInfo: typeReturn.route,
-                            tables: tables,
-                            info: markdown.markdown.toHTML(info.join('\r\n'))
+                            script:cooked,
+                            query:pieces.query,
+                            routeInfo:typeReturn.route,
+                            tables:tables,
+                            info:markdown.markdown.toHTML(info.join('\r\n')),
+                            pathAsArray:((pieces.pathname.length > 1 &&
+                                pieces.pathname.charAt(pieces.pathname.length - 1) == '/' ?
+                                pieces.pathname.splice(0, pieces.pathname.length - 1) : pieces.pathname).split('/'))
                         };
                     routes.verbMap[pieces.pathname][typeReturn.route.method].push(routeRecord);
                     routes.simpleMap[typeReturn.route.method + ':' + typeReturn.route.path.value]=routeRecord;

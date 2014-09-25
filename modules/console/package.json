@@ -28,7 +28,8 @@
         "mustache": "0.4.0",
         "xml2json": "0.2.4",
         "connect-assetmanager" : "0.0.28",
-        "connect-assetmanager-handlers" : "0.0.18"
+        "connect-assetmanager-handlers" : "0.0.18",
+        "prompt": "0.2.9"
     },
     "devDependencies": {
         "nodeunit": "0.7.4",
